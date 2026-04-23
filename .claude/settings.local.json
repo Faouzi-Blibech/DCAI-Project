@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(rm -f project_hide.db)",
+      "Bash(python -m observatory.main)",
+      "Bash(rm -f ../project_hide.db project_hide.db)",
+      "Bash(PYTHONPATH=.. python db/seed.py --reset)"
+    ]
+  }
+}
