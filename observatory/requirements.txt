@@ -2,8 +2,8 @@ mesa<3.0
 sqlalchemy>=2.0
 faker
 numpy
-streamlit
-plotly
 pandas
 scikit-learn
+flask
+flask-cors
 python-dotenv
