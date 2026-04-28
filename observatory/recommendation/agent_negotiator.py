@@ -14,7 +14,8 @@ from observatory.db.models import Collaboration, Expertise, Researcher
 logger = logging.getLogger(__name__)
 
 NUM_EXPERTISE_AREAS = 15
-ACCEPT_THRESHOLD = 0.3
+ACCEPT_THRESHOLD = 0.15
+PARETO_FLOOR = 0.05
 
 
 def _compute_utilities(
@@ -66,13 +67,14 @@ def _compute_utilities(
 
 
 def _is_cc_nash(utility_a: float, utility_b: float) -> bool:
-    """Return True iff (cooperate, cooperate) is a Nash equilibrium.
+    """Pareto-dominance test over the mutual-defection baseline (0.05, 0.05).
 
-    (C,C) is NE if neither player strictly prefers to unilaterally deviate to D.
-    Deviation payoffs: A→D gives utility_a * 1.1; B→D gives utility_b * 1.1.
-    So NE requires utility_a >= utility_a * 1.1 AND utility_b >= utility_b * 1.1.
+    Cooperation is accepted when BOTH players are strictly better off
+    cooperating than they would be at (D,D). This replaces the textbook
+    strict-NE check, which in this payoff matrix is only satisfied at
+    u_a = u_b = 0 and would reject every positive-utility pair.
     """
-    return (utility_a >= utility_a * 1.1) and (utility_b >= utility_b * 1.1)
+    return utility_a > PARETO_FLOOR and utility_b > PARETO_FLOOR
 
 
 class AgentNegotiator(Agent):
