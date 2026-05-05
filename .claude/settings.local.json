@@ -4,7 +4,15 @@
       "Bash(rm -f project_hide.db)",
       "Bash(python -m observatory.main)",
       "Bash(rm -f ../project_hide.db project_hide.db)",
-      "Bash(PYTHONPATH=.. python db/seed.py --reset)"
+      "Bash(PYTHONPATH=.. python db/seed.py --reset)",
+      "Bash(sqlite3 project_hide.db \"SELECT algorithm, COUNT\\(*\\), AVG\\(silhouette_score\\) FROM clusters GROUP BY algorithm;\")",
+      "Bash(sqlite3 project_hide.db \"SELECT status, COUNT\\(*\\) FROM collaborations GROUP BY status;\")",
+      "Bash(sqlite3 project_hide.db \"SELECT COUNT\\(*\\) FROM researchers WHERE cluster_id IS NULL;\")",
+      "Read(//c/Users/faouz/**)",
+      "Bash(PYTHONPATH=C:/Users/faouz/Documents/DCAI-Project python -c \"from observatory.config import BASE_DIR, DB_URL; print\\('BASE_DIR:', BASE_DIR\\); print\\('DB_URL:  ', DB_URL\\)\")",
+      "Bash(python -m observatory.db.seed --reset)",
+      "WebFetch(domain:api.anthropic.com)",
+      "Bash(python -c ' *)"
     ]
   }
 }

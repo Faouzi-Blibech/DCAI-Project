@@ -13,6 +13,7 @@ from observatory.agents.observer.researcher_scraper import AgentResearcherScrape
 from observatory.analysis.agent_cluster import AgentCluster
 from observatory.analysis.agent_expertise import AgentExpertiseMatcher
 from observatory.config import BASE_DIR
+from observatory.recommendation.agent_collab_advisor import AgentCollabAdvisor
 from observatory.recommendation.agent_negotiator import AgentNegotiator
 
 logger = logging.getLogger(__name__)
@@ -24,6 +25,7 @@ AGENT_SEQUENCE = (
     AgentLabScraper,
     AgentCluster,
     AgentExpertiseMatcher,
+    AgentCollabAdvisor,
     AgentNegotiator,
 )
 
@@ -104,6 +106,17 @@ class AgentCoordinator(Model):
                 f"{cls_name}: {payload.get('candidates_inserted', 0)} pairs inserted "
                 f"(evaluated={payload.get('total_pairs_evaluated', 0)}), "
                 f"avg_sim={payload.get('avg_similarity', 0.0):.2f}"
+            )
+        if n == "collab_advisor":
+            top = payload.get("top_recommendation")
+            top_txt = (
+                f"{top[0]} ↔ {top[1]} ({top[2]:.2f})"
+                if top else "n/a"
+            )
+            return (
+                f"{cls_name}: {payload.get('recommended', 0)} recommended "
+                f"(evaluated={payload.get('evaluated', 0)}, "
+                f"avg_sim={payload.get('avg_similarity', 0.0):.2f}, top={top_txt})"
             )
         if n == "negotiator":
             return (

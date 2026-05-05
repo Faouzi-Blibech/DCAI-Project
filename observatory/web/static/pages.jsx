@@ -24,8 +24,12 @@ function PageOverview({ data }) {
           <div className="sub">System health · cycle #248 · 2026-04-23 03:41 UTC</div>
         </div>
         <div className="ph-actions">
-          <button className="btn"><Icon d={icons.refresh} size={13}/> Refresh</button>
-          <button className="btn"><Icon d={icons.download} size={13}/> Export</button>
+          <button className="btn" onClick={()=>window._hideRefresh && window._hideRefresh()}>
+            <Icon d={icons.refresh} size={13}/> Refresh
+          </button>
+          <a className="btn" href="/api/researchers/export.csv" download>
+            <Icon d={icons.download} size={13}/> Export
+          </a>
         </div>
       </div>
 
@@ -58,8 +62,14 @@ function PageOverview({ data }) {
           alignItems:'center', justifyContent:'space-between'}}>
           <h3 style={{margin:0}}>Recent activity <span className="meta">20 latest publications</span></h3>
           <div style={{display:'flex',gap:8}}>
-            <button className="btn"><Icon d={icons.filter} size={13}/> Filter</button>
-            <button className="btn">View all →</button>
+            <button className="btn"
+              onClick={()=>window.dispatchEvent(new CustomEvent('hide-nav', {detail:'researchers'}))}>
+              <Icon d={icons.filter} size={13}/> Filter
+            </button>
+            <button className="btn"
+              onClick={()=>window.dispatchEvent(new CustomEvent('hide-nav', {detail:'researchers'}))}>
+              View all →
+            </button>
           </div>
         </div>
         <table className="t">
@@ -90,14 +100,22 @@ function PageResearchers({ data }) {
   const [cluster, setCluster] = useStateP('All');
   const [exp, setExp] = useStateP('All');
   const [minH, setMinH] = useStateP(0);
-  const [selId, setSelId] = useStateP(data.RESEARCHERS[3].id);
+  const [selId, setSelId] = useStateP(data.RESEARCHERS[3]?.id || data.RESEARCHERS[0]?.id);
+  const [query, setQuery] = useStateP('');
+  const [page, setPage] = useStateP(1);
+  const PAGE_SIZE = 20;
 
   const filtered = useMemoP(()=>data.RESEARCHERS.filter(r =>
     (lab==='All' || r.lab.name===lab) &&
     (cluster==='All' || r.cluster.name===cluster) &&
     (exp==='All' || r.areas.some(a=>a.name===exp)) &&
-    r.h_index >= minH
-  ), [lab, cluster, exp, minH, data]);
+    r.h_index >= minH &&
+    (!query || r.name.toLowerCase().includes(query.toLowerCase()))
+  ), [lab, cluster, exp, minH, query, data]);
+
+  useEffectP(()=>{ setPage(1); }, [lab, cluster, exp, minH, query]);
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const pageRows = filtered.slice((page-1)*PAGE_SIZE, page*PAGE_SIZE);
 
   const scatterPoints = filtered.map(r => ({
     id:r.id, h_index:r.h_index, citations:r.citations,
@@ -115,7 +133,9 @@ function PageResearchers({ data }) {
           <div className="sub">{filtered.length} of {data.RESEARCHERS.length} researchers · filtered</div>
         </div>
         <div className="ph-actions">
-          <button className="btn"><Icon d={icons.download} size={13}/> Export CSV</button>
+          <a className="btn" href="/api/researchers/export.csv" download>
+            <Icon d={icons.download} size={13}/> Export CSV
+          </a>
         </div>
       </div>
 
@@ -163,8 +183,13 @@ function PageResearchers({ data }) {
             <div style={{padding:'12px 16px',borderBottom:'1px solid var(--border)',
               display:'flex',alignItems:'center',justifyContent:'space-between'}}>
               <h3 style={{margin:0}}>All researchers <span className="meta">{filtered.length} rows · click to inspect</span></h3>
-              <div style={{display:'flex',gap:8}}>
-                <button className="btn"><Icon d={icons.search} size={13}/> Search</button>
+              <div style={{display:'flex',gap:8,alignItems:'center'}}>
+                <Icon d={icons.search} size={13}/>
+                <input type="text" placeholder="Search by name…"
+                  value={query} onChange={e=>setQuery(e.target.value)}
+                  style={{background:'var(--surface)',border:'1px solid var(--border)',
+                    borderRadius:6,color:'var(--text)',padding:'5px 9px',
+                    fontSize:12,fontFamily:'var(--sans)',width:200}}/>
               </div>
             </div>
             <div style={{maxHeight:340, overflow:'auto'}}>
@@ -175,7 +200,7 @@ function PageResearchers({ data }) {
                   <th>Cluster</th><th>Top expertise</th>
                 </tr></thead>
                 <tbody>
-                  {filtered.slice(0,20).map(r=>(
+                  {pageRows.map(r=>(
                     <tr key={r.id} className={r.id===selId?'sel':''} onClick={()=>setSelId(r.id)}>
                       <td className="name">{r.name}</td>
                       <td style={{color:'var(--muted)'}}>{r.lab.name}</td>
@@ -183,18 +208,29 @@ function PageResearchers({ data }) {
                       <td className="num">{fmt(r.citations)}</td>
                       <td className="num">{r.publications}</td>
                       <td><span className="tag" style={{color:r.cluster.color, borderColor:r.cluster.color+'55', background:r.cluster.color+'14'}}>{r.cluster.name}</span></td>
-                      <td style={{color:'var(--muted)',fontSize:11}}>{r.areas[0].name}</td>
+                      <td style={{color:'var(--muted)',fontSize:11}}>{r.areas[0]?.name || '—'}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
             <div className="pager">
-              <div>Showing 1–20 of {filtered.length}</div>
+              <div>Showing {filtered.length===0?0:((page-1)*PAGE_SIZE+1)}–{Math.min(page*PAGE_SIZE, filtered.length)} of {filtered.length}</div>
               <div className="pg">
-                <button>‹</button><button className="on">1</button>
-                <button>2</button><button>3</button><button>…</button>
-                <button>{Math.ceil(filtered.length/20)}</button><button>›</button>
+                <button onClick={()=>setPage(p=>Math.max(1,p-1))} disabled={page===1}>‹</button>
+                {Array.from({length: totalPages}, (_,i)=>i+1)
+                  .filter(n => n===1 || n===totalPages || Math.abs(n-page)<=1)
+                  .map((n,i,arr)=>{
+                    const prev = arr[i-1];
+                    const gap = prev !== undefined && n - prev > 1;
+                    return (
+                      <React.Fragment key={n}>
+                        {gap && <button disabled>…</button>}
+                        <button className={n===page?'on':''} onClick={()=>setPage(n)}>{n}</button>
+                      </React.Fragment>
+                    );
+                  })}
+                <button onClick={()=>setPage(p=>Math.min(totalPages,p+1))} disabled={page===totalPages}>›</button>
               </div>
             </div>
           </div>
@@ -273,13 +309,23 @@ function PageResearchers({ data }) {
 
 // ═══ PAGE 3 — CLUSTERS ═════════════════════════════════════════════════════
 function PageClusters({ data }) {
-  // Fake PCA: spread each researcher roughly by cluster centroid + jitter
-  const centroids = {
-    C1:[-3.2, 1.4], C2:[2.1,-2.4], C3:[3.4,2.6], C4:[-2.8,-2.2], C5:[0.6,3.4], C6:[-1.2,-3.6]
-  };
+  // Fake PCA: spread each researcher roughly by cluster centroid + jitter.
+  // Build centroids dynamically so any number of clusters works (after reseed
+  // the cluster count can be 6, 10, etc.).
   const seed = (n)=>{let x=Math.sin(n)*10000;return x-Math.floor(x);};
+  const centroids = useMemoP(()=>{
+    const map = {};
+    const ids = data.CLUSTERS.map(c=>c.id);
+    ids.forEach((id, i) => {
+      const ang = (i / Math.max(ids.length,1)) * Math.PI * 2;
+      const r = 3.2;
+      map[id] = [Math.cos(ang)*r, Math.sin(ang)*r];
+    });
+    return map;
+  }, [data.CLUSTERS]);
+
   const pcaPoints = data.RESEARCHERS.map((r,i)=>{
-    const c = centroids[r.cluster.id];
+    const c = centroids[r.cluster.id] || [0, 0];
     return { id:r.id, px: c[0] + (seed(i+1)-0.5)*2.4,
              py: c[1] + (seed(i*3+7)-0.5)*2.4, color: r.cluster.color,
              name: r.name, lab: r.lab.name };
@@ -303,15 +349,23 @@ function PageClusters({ data }) {
           <div className="sub">HDBSCAN + KMeans · avg silhouette 0.452 · last run 03m ago</div>
         </div>
         <div className="ph-actions">
-          <button className="btn"><Icon d={icons.settings} size={13}/> Algorithm</button>
-          <button className="btn primary"><Icon d={icons.refresh} size={13}/> Re-cluster</button>
+          <button className="btn" onClick={()=>window._hideRefresh && window._hideRefresh()}>
+            <Icon d={icons.refresh} size={13}/> Refresh
+          </button>
+          <button className="btn primary" onClick={()=>window._hideAction('/recluster')}>
+            <Icon d={icons.refresh} size={13}/> Re-cluster
+          </button>
         </div>
       </div>
 
       <div className="cluster-grid" style={{marginBottom:16}}>
         {data.CLUSTERS.map(c=>{
           const silCls = c.silhouette > 0.5 ? 'sil-g' : c.silhouette > 0.3 ? 'sil-a' : 'sil-r';
-          const top = data.EXPERTISE.slice((c.id.charCodeAt(1)*3)%10, ((c.id.charCodeAt(1)*3)%10)+3);
+          const idNum = parseInt(c.id.replace(/\D/g,''),10) || 0;
+          const top = (c.top_areas && c.top_areas.length)
+            ? c.top_areas.slice(0,3)
+            : data.EXPERTISE.slice((idNum*3)%Math.max(data.EXPERTISE.length-3,1),
+                                   (idNum*3)%Math.max(data.EXPERTISE.length-3,1)+3);
           return (
             <div key={c.id} className="cluster-card">
               <div className={`c-sil ${silCls}`}>σ {c.silhouette.toFixed(2)}</div>
@@ -380,6 +434,23 @@ function PageCollabs({ data, networkStyle }) {
   const [filter, setFilter] = useStateP('All');
   const [pairIdx, setPairIdx] = useStateP(0);
 
+  if (!data.COLLABS || data.COLLABS.length === 0) {
+    return (
+      <>
+        <div className="ph">
+          <div>
+            <h1>Collaborations</h1>
+            <div className="sub">No collaborations yet · run a MAS cycle to populate</div>
+          </div>
+        </div>
+        <div className="card" style={{textAlign:'center',padding:40,color:'var(--muted)'}}>
+          <div style={{fontSize:14,marginBottom:8}}>No collaboration data</div>
+          <div style={{fontSize:12}}>Click <b>Run MAS Cycle</b> in the sidebar to generate recommendations.</div>
+        </div>
+      </>
+    );
+  }
+
   const top = data.COLLABS.slice(0,50);
   const nodesMap = new Map();
   top.forEach(c=>{
@@ -427,8 +498,14 @@ function PageCollabs({ data, networkStyle }) {
           <div className="sub">AgentCollabAdvisor · AgentNegotiator · Nash equilibrium acceptance</div>
         </div>
         <div className="ph-actions">
-          <button className="btn"><Icon d={icons.refresh} size={13}/> Re-evaluate</button>
-          <button className="btn primary">Accept all pending</button>
+          <button className="btn" onClick={()=>window._hideAction('/recommendations')}>
+            <Icon d={icons.refresh} size={13}/> Re-evaluate
+          </button>
+          <button className="btn primary"
+            onClick={()=>window._hideAction('/collaborations/accept_pending',
+              { confirm: 'Accept ALL pending collaborations?' })}>
+            Accept all pending
+          </button>
         </div>
       </div>
 
@@ -587,10 +664,20 @@ function PageAgents({ data, showLog }) {
           <div className="sub">Mission control · 8 agents · cycle #248 complete</div>
         </div>
         <div className="ph-actions">
-          <button className="btn"><Icon d={icons.refresh} size={13}/> Re-run clustering</button>
-          <button className="btn"><Icon d={icons.refresh} size={13}/> Re-run recs</button>
-          <button className="btn" style={{color:'#ff7b72',borderColor:'#4a1d1d'}}>Reset + reseed DB</button>
-          <button className="btn primary"><Icon d={icons.play} size={13}/> Run full MAS cycle</button>
+          <button className="btn" onClick={()=>window._hideAction('/recluster')}>
+            <Icon d={icons.refresh} size={13}/> Re-run clustering
+          </button>
+          <button className="btn" onClick={()=>window._hideAction('/recommendations')}>
+            <Icon d={icons.refresh} size={13}/> Re-run recs
+          </button>
+          <button className="btn" style={{color:'#ff7b72',borderColor:'#4a1d1d'}}
+            onClick={()=>window._hideAction('/reseed',
+              { confirm: 'This will WIPE and reseed the database. Continue?' })}>
+            Reset + reseed DB
+          </button>
+          <button className="btn primary" onClick={()=>window._hideAction('/run')}>
+            <Icon d={icons.play} size={13}/> Run full MAS cycle
+          </button>
         </div>
       </div>
 
@@ -634,7 +721,9 @@ function PageAgents({ data, showLog }) {
               <span style={{fontFamily:'var(--mono)',fontSize:11,color:'var(--muted)'}}>
                 <span className="stat-pill"><span className="d"/>auto-refresh 5s</span>
               </span>
-              <button className="btn"><Icon d={icons.download} size={13}/> Download</button>
+              <a className="btn" href="/api/logs/download" download>
+                <Icon d={icons.download} size={13}/> Download
+              </a>
             </div>
           </div>
           <div className="log" ref={logRef}>

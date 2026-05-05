@@ -166,6 +166,9 @@ class AgentExpertiseMatcher(Agent):
             "candidates_inserted": inserted,
             "avg_similarity": avg_similarity,
             "top_pair": top_pair,
+            # Exposed for AgentCollabAdvisor — keeps the matcher self-contained
+            # but lets the advisor rank/recommend without recomputing TF-IDF.
+            "top_matches": self.top_matches,
         }
         self.model.message_bus[self.name] = payload
         logger.info("AgentExpertiseMatcher: done %s", payload)

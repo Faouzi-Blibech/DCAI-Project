@@ -199,12 +199,35 @@ const Heatmap = ({ rows, cols, values, colorScale }) => {
 // ─── Status badge ──────────────────────────────────────────────────────────
 const Badge = ({ kind='blue', children }) => <span className={`tag ${kind}`}>{children}</span>;
 
+// ─── Modal ─────────────────────────────────────────────────────────────────
+function Modal({ title, onClose, children }) {
+  return (
+    <div onClick={onClose}
+      style={{position:'fixed',inset:0,background:'rgba(8,11,16,.7)',
+        backdropFilter:'blur(4px)',display:'grid',placeItems:'center',zIndex:50}}>
+      <div onClick={e=>e.stopPropagation()}
+        style={{background:'var(--surface)',border:'1px solid var(--border)',
+          borderRadius:8,minWidth:380,maxWidth:560,maxHeight:'80vh',overflow:'auto',
+          padding:18,boxShadow:'0 20px 60px rgba(0,0,0,.5)'}}>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',
+          marginBottom:12,borderBottom:'1px solid var(--border-soft)',paddingBottom:10}}>
+          <div style={{fontWeight:600,fontSize:14}}>{title}</div>
+          <button onClick={onClose}
+            style={{background:'transparent',border:0,color:'var(--muted)',
+              cursor:'pointer',fontSize:18,lineHeight:1}}>✕</button>
+        </div>
+        {children}
+      </div>
+    </div>
+  );
+}
+
 // ─── Utils ─────────────────────────────────────────────────────────────────
 function truncate(s, n=60){ return s.length > n ? s.slice(0,n-1)+'…' : s; }
 function fmt(n){ return (n||0).toLocaleString(); }
 
 // Export
 Object.assign(window, {
-  Icon, icons, BrandMark, Spark, Kpi, BarChart, HBarList, Scatter, Heatmap, Badge,
+  Icon, icons, BrandMark, Spark, Kpi, BarChart, HBarList, Scatter, Heatmap, Badge, Modal,
   truncate, fmt,
 });

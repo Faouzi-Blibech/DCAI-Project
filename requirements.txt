@@ -1,0 +1,12 @@
+# Project HIDE — runtime dependencies
+mesa>=2.1
+flask>=3.0
+flask-cors
+sqlalchemy>=2.0
+scikit-learn>=1.3
+numpy
+faker
+
+# Documentation tooling (optional — used by scripts/)
+python-docx
+matplotlib

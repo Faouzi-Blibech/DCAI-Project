@@ -48,6 +48,26 @@ async function fetchAll() {
 
 window._hideRefresh = fetchAll;
 
+// Generic POST helper for action buttons. Refreshes data on success.
+window._hideAction = async function (path, { confirm: confirmMsg, refresh = true } = {}) {
+  if (confirmMsg && !window.confirm(confirmMsg)) return null;
+  try {
+    const res = await fetch(`${API}${path}`, { method: 'POST' });
+    const json = await res.json();
+    if (!json.ok) {
+      console.error(`Action ${path} failed:`, json.message);
+      window.alert(`Failed: ${json.message}`);
+      return json;
+    }
+    if (refresh) await fetchAll();
+    return json;
+  } catch (err) {
+    console.error(`Action ${path} error:`, err);
+    window.alert(`Error: ${err.message || err}`);
+    return null;
+  }
+};
+
 fetchAll().catch(err => {
   console.error('HIDE API fetch failed:', err);
   document.getElementById('root').innerHTML = `

@@ -32,6 +32,8 @@ function App(){
   const [page, setPage] = useStateA('overview');
   const [running, setRunning] = useStateA(false);
   const [data, setData] = useStateA(window.HIDE_DATA || null);
+  const [showAlerts, setShowAlerts] = useStateA(false);
+  const [showSettings, setShowSettings] = useStateA(false);
 
   // ALL hooks run unconditionally before any early return — Rules of Hooks.
   useEffectA(() => {
@@ -56,7 +58,12 @@ function App(){
       if (hit) setPage(hit.id);
     };
     window.addEventListener('keydown', onKey);
-    return ()=>window.removeEventListener('keydown', onKey);
+    const onNav = e => { if (PAGES.find(p=>p.id===e.detail)) setPage(e.detail); };
+    window.addEventListener('hide-nav', onNav);
+    return ()=>{
+      window.removeEventListener('keydown', onKey);
+      window.removeEventListener('hide-nav', onNav);
+    };
   },[]);
 
   // Now safe to conditionally render — no hooks below this point.
@@ -94,6 +101,13 @@ function App(){
   };
 
   const cur = PAGES.find(p=>p.id===page);
+  const errAgents = (data.AGENTS || []).filter(a => a.status === 'error');
+  const idleAgents = (data.AGENTS || []).filter(a => a.status === 'idle');
+  const alerts = [
+    ...errAgents.map(a => ({tone:'red', title:`${a.name} errored`, body:`Last run: ${a.last}`})),
+    ...idleAgents.map(a => ({tone:'amber', title:`${a.name} idle`, body:`No activity logged yet`})),
+  ];
+  const alertCount = alerts.length;
 
   return (
     <div className="app">
@@ -119,8 +133,15 @@ function App(){
           ))}
 
           <div className="nav-section">System</div>
-          <div className="nav-item"><Icon d={icons.bell} size={15}/><span>Alerts</span><span className="kbd" style={{background:'rgba(248,81,73,.1)',color:'#ff7b72',borderColor:'#4a1d1d'}}>2</span></div>
-          <div className="nav-item"><Icon d={icons.settings} size={15}/><span>Settings</span></div>
+          <div className="nav-item" onClick={()=>setShowAlerts(true)} style={{cursor:'pointer'}}>
+            <Icon d={icons.bell} size={15}/><span>Alerts</span>
+            <span className="kbd" style={{background:'rgba(248,81,73,.1)',color:'#ff7b72',borderColor:'#4a1d1d'}}>
+              {alertCount}
+            </span>
+          </div>
+          <div className="nav-item" onClick={()=>setShowSettings(true)} style={{cursor:'pointer'}}>
+            <Icon d={icons.settings} size={15}/><span>Settings</span>
+          </div>
         </nav>
 
         <div className="sidebar-foot">
@@ -147,7 +168,10 @@ function App(){
             <span className="cur">{cur.label.toUpperCase()}</span>
           </div>
           <div className="top-right">
-            <span className="stat-pill"><span className="d"/>7 of 8 agents healthy</span>
+            <span className={`stat-pill ${errAgents.length?'warn':''}`}>
+              <span className="d"/>
+              {(data.AGENTS||[]).filter(a=>a.status==='active').length} of {(data.AGENTS||[]).length} agents healthy
+            </span>
             <span className="ticker"><Ticker/></span>
             <div className="avatar">AK</div>
           </div>
@@ -161,6 +185,74 @@ function App(){
           {page==='agents'      && <PageAgents data={data} showLog={t.showLog}/>}
         </div>
       </main>
+
+      {showAlerts && (
+        <Modal title={`Alerts (${alertCount})`} onClose={()=>setShowAlerts(false)}>
+          {alerts.length === 0
+            ? <div style={{color:'var(--muted)',fontSize:12}}>No active alerts. All agents healthy.</div>
+            : alerts.map((a,i)=>(
+                <div key={i} style={{padding:'10px 0',borderBottom:'1px solid var(--border-soft)'}}>
+                  <div style={{color: a.tone==='red'?'#ff7b72':'#e3b341', fontSize:12, fontWeight:600}}>
+                    ● {a.title}
+                  </div>
+                  <div style={{color:'var(--muted)',fontSize:11,fontFamily:'var(--mono)',marginTop:2}}>
+                    {a.body}
+                  </div>
+                </div>
+              ))}
+        </Modal>
+      )}
+
+      {showSettings && (
+        <Modal title="Settings" onClose={()=>setShowSettings(false)}>
+          <div style={{display:'flex',flexDirection:'column',gap:14,fontSize:12}}>
+            <div>
+              <div style={{color:'var(--muted)',fontFamily:'var(--mono)',fontSize:10,
+                letterSpacing:'.1em',textTransform:'uppercase',marginBottom:6}}>Theme</div>
+              <div style={{display:'flex',gap:6}}>
+                {['compact','regular','comfy'].map(d=>(
+                  <button key={d} className="btn"
+                    onClick={()=>setTweak('density', d)}
+                    style={t.density===d?{borderColor:'var(--accent)',color:'#79b8ff'}:{}}>
+                    {d}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div>
+              <div style={{color:'var(--muted)',fontFamily:'var(--mono)',fontSize:10,
+                letterSpacing:'.1em',textTransform:'uppercase',marginBottom:6}}>Network layout</div>
+              <div style={{display:'flex',gap:6}}>
+                {['force','arc'].map(n=>(
+                  <button key={n} className="btn"
+                    onClick={()=>setTweak('network', n)}
+                    style={t.network===n?{borderColor:'var(--accent)',color:'#79b8ff'}:{}}>
+                    {n}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div>
+              <div style={{color:'var(--muted)',fontFamily:'var(--mono)',fontSize:10,
+                letterSpacing:'.1em',textTransform:'uppercase',marginBottom:6}}>Agents</div>
+              <button className="btn" onClick={()=>setTweak('showLog', !t.showLog)}>
+                {t.showLog ? '✓ Live log visible' : '○ Live log hidden'}
+              </button>
+            </div>
+            <div>
+              <div style={{color:'var(--muted)',fontFamily:'var(--mono)',fontSize:10,
+                letterSpacing:'.1em',textTransform:'uppercase',marginBottom:6}}>Data</div>
+              <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
+                <button className="btn" onClick={()=>{ window._hideRefresh && window._hideRefresh(); }}>
+                  Refresh data
+                </button>
+                <a className="btn" href="/api/researchers/export.csv" download>Export researchers</a>
+                <a className="btn" href="/api/logs/download" download>Download log</a>
+              </div>
+            </div>
+          </div>
+        </Modal>
+      )}
 
       <TweaksPanel>
         <TweakSection label="Theme"/>

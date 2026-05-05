@@ -9,6 +9,8 @@ JSON endpoints under /api/*  read directly from the live SQLite DB.
 
 from __future__ import annotations
 
+import csv
+import io
 import re
 import sys
 from collections import defaultdict
@@ -22,7 +24,7 @@ for _p in (_HERE, _HERE.parent, _HERE.parent.parent):
     if _s not in sys.path:
         sys.path.insert(0, _s)
 
-from flask import Flask, jsonify, request, send_from_directory
+from flask import Flask, Response, jsonify, request, send_from_directory
 from flask_cors import CORS
 from sqlalchemy import func, select
 
@@ -540,6 +542,146 @@ def api_run():
         return jsonify({"ok": True, "message": "Cycle complete", "summary": summary})
     except Exception as e:
         return jsonify({"ok": False, "message": f"{type(e).__name__}: {e}"}), 500
+
+
+# ─── /api/recluster  (POST) ─────────────────────────────────────────────────
+
+@app.route("/api/recluster", methods=["POST"])
+def api_recluster():
+    try:
+        from observatory.agents.coordinator import AgentCoordinator
+        from observatory.analysis.agent_cluster import AgentCluster
+        coord = AgentCoordinator()
+        for agent in coord.ordered_agents:
+            if isinstance(agent, AgentCluster):
+                agent.step()
+                coord._log_agent_metric(agent)
+                break
+        payload = coord.message_bus.get("cluster", {})
+        return jsonify({"ok": True, "message": "Re-clustered",
+                        "n_clusters": payload.get("n_clusters", 0),
+                        "silhouette": payload.get("silhouette_score", 0)})
+    except Exception as e:
+        return jsonify({"ok": False, "message": f"{type(e).__name__}: {e}"}), 500
+
+
+# ─── /api/recommendations  (POST) ───────────────────────────────────────────
+
+@app.route("/api/recommendations", methods=["POST"])
+def api_recommendations():
+    try:
+        from observatory.agents.coordinator import AgentCoordinator
+        from observatory.analysis.agent_expertise import AgentExpertiseMatcher
+        from observatory.recommendation.agent_collab_advisor import AgentCollabAdvisor
+        from observatory.recommendation.agent_negotiator import AgentNegotiator
+        coord = AgentCoordinator()
+        for agent in coord.ordered_agents:
+            if isinstance(agent, (AgentExpertiseMatcher, AgentCollabAdvisor, AgentNegotiator)):
+                agent.step()
+                coord._log_agent_metric(agent)
+        neg = coord.message_bus.get("negotiator", {})
+        adv = coord.message_bus.get("collab_advisor", {})
+        return jsonify({"ok": True, "message": "Recommendations refreshed",
+                        "advised": adv.get("recommended", 0),
+                        "accepted": neg.get("accepted", 0),
+                        "rejected": neg.get("rejected", 0)})
+    except Exception as e:
+        return jsonify({"ok": False, "message": f"{type(e).__name__}: {e}"}), 500
+
+
+# ─── /api/advisor  (POST) ───────────────────────────────────────────────────
+
+@app.route("/api/advisor", methods=["POST"])
+def api_advisor():
+    try:
+        from observatory.agents.coordinator import AgentCoordinator
+        from observatory.analysis.agent_expertise import AgentExpertiseMatcher
+        from observatory.recommendation.agent_collab_advisor import AgentCollabAdvisor
+        coord = AgentCoordinator()
+        # Advisor depends on matcher's bus output; run matcher first to refresh it.
+        for agent in coord.ordered_agents:
+            if isinstance(agent, (AgentExpertiseMatcher, AgentCollabAdvisor)):
+                agent.step()
+                coord._log_agent_metric(agent)
+        adv = coord.message_bus.get("collab_advisor", {})
+        return jsonify({"ok": True, "message": "Advisor refreshed",
+                        "recommended": adv.get("recommended", 0),
+                        "evaluated": adv.get("evaluated", 0),
+                        "top": adv.get("top_recommendation")})
+    except Exception as e:
+        return jsonify({"ok": False, "message": f"{type(e).__name__}: {e}"}), 500
+
+
+# ─── /api/collaborations/accept_pending  (POST) ─────────────────────────────
+
+@app.route("/api/collaborations/accept_pending", methods=["POST"])
+def api_accept_pending():
+    try:
+        with SessionLocal() as db:
+            pending = db.execute(
+                select(Collaboration).where(Collaboration.status == "pending")
+            ).scalars().all()
+            n = 0
+            for c in pending:
+                c.status = "accepted"
+                n += 1
+            db.commit()
+        return jsonify({"ok": True, "message": f"Accepted {n} collaborations",
+                        "accepted": n})
+    except Exception as e:
+        return jsonify({"ok": False, "message": f"{type(e).__name__}: {e}"}), 500
+
+
+# ─── /api/reseed  (POST) ────────────────────────────────────────────────────
+
+@app.route("/api/reseed", methods=["POST"])
+def api_reseed():
+    try:
+        from observatory.db.seed import reset_db, seed_all
+        reset_db()
+        counts = seed_all()
+        return jsonify({"ok": True, "message": "Database reset & reseeded",
+                        "counts": counts})
+    except Exception as e:
+        return jsonify({"ok": False, "message": f"{type(e).__name__}: {e}"}), 500
+
+
+# ─── /api/logs/download  (GET) ──────────────────────────────────────────────
+
+@app.route("/api/logs/download")
+def api_logs_download():
+    text = "\n".join(_read_log_lines()) if LOG_PATH.exists() else ""
+    return Response(
+        text,
+        mimetype="text/plain",
+        headers={"Content-Disposition": "attachment; filename=mas.log"},
+    )
+
+
+# ─── /api/researchers/export.csv  (GET) ─────────────────────────────────────
+
+@app.route("/api/researchers/export.csv")
+def api_researchers_csv():
+    with SessionLocal() as db:
+        rows = db.execute(
+            select(Researcher).join(Lab, Researcher.lab_id == Lab.lab_id)
+        ).scalars().all()
+        buf = io.StringIO()
+        w = csv.writer(buf)
+        w.writerow(["id", "name", "lab", "h_index", "publications",
+                    "citations", "cluster_id"])
+        for r in rows:
+            w.writerow([
+                r.researcher_id, r.name,
+                r.lab.name if r.lab else "",
+                r.h_index or 0, r.publication_count or 0,
+                r.citation_count or 0, r.cluster_id or "",
+            ])
+        return Response(
+            buf.getvalue(),
+            mimetype="text/csv",
+            headers={"Content-Disposition": "attachment; filename=researchers.csv"},
+        )
 
 
 if __name__ == "__main__":
